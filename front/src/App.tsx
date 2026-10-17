@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { BookOpen, FileText, LockKeyhole, Search, Shield, Upload, UserRound, Video, type LucideIcon } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import './App.css'
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
@@ -28,6 +29,7 @@ function formatSize(bytes: number) {
 }
 
 function App() {
+  const reduceMotion = useReducedMotion()
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState('')
@@ -70,7 +72,12 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <motion.aside
+        className="sidebar"
+        initial={reduceMotion ? false : { opacity: 0, x: -7 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+      >
         <a className="brand" href="#video-analysis" aria-label="ForteBank home">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
           <span>ForteBank</span>
@@ -92,27 +99,49 @@ function App() {
           <span className="status-dot" />
           <div><strong>Frontend prototype</strong><span>Analysis is not connected</span></div>
         </div>
-      </aside>
+      </motion.aside>
 
       <div className="main-column">
-        <header className="topbar">
+        <motion.header
+          className="topbar"
+          initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, delay: 0.04, ease: 'easeOut' }}
+        >
           <div className="breadcrumb">Compliance Intelligence <span>/</span> <strong>Video Analysis</strong></div>
           <div className="topbar-label">Internal workspace</div>
-        </header>
+        </motion.header>
 
         <main className="page-content" id="video-analysis">
-          <div className="page-heading">
+          <motion.div
+            className="page-heading"
+            initial={reduceMotion ? false : { opacity: 0, y: 7 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, delay: 0.07, ease: 'easeOut' }}
+          >
             <div>
               <div className="eyebrow">VIDEO REVIEW</div>
               <h1>Video Analysis</h1>
               <p>Upload a cashier operation video to prepare it for compliance review.</p>
             </div>
-          </div>
+          </motion.div>
 
           <div className="workspace-grid">
-            <section className="upload-panel" aria-labelledby="upload-title">
-              <div
+            <motion.section
+              className="upload-panel"
+              aria-labelledby="upload-title"
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.24, delay: 0.11, ease: 'easeOut' }}
+            >
+              <motion.div
                 className={`dropzone${dragging ? ' is-dragging' : ''}${error ? ' has-error' : ''}`}
+                animate={{
+                  borderColor: error ? '#d98989' : dragging ? '#218365' : '#cbd2db',
+                  backgroundColor: dragging ? '#f4faf7' : '#fcfcfd',
+                  scale: dragging ? 1.006 : 1,
+                }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -125,47 +154,79 @@ function App() {
                   onChange={(event) => { acceptFile(event.target.files?.[0]); event.target.value = '' }}
                   aria-label="Choose a .mov video file"
                 />
-                {file ? (
-                  <div className="selected-file">
-                    <div className="upload-symbol"><Icon name="file" size={28} /></div>
-                    <span className="file-label">VIDEO SELECTED</span>
-                    <h2 id="upload-title" className="selected-name">{file.name}</h2>
-                    <p className="file-size">{formatSize(file.size)} <span>·</span> .mov</p>
-                    <button type="button" className="button-secondary" onClick={openFilePicker}>Choose another file</button>
-                    <p className="prototype-note">Analysis will be available when the backend is connected.</p>
-                  </div>
-                ) : (
-                  <div className="dropzone-content">
-                    <div className="upload-symbol"><Icon name="video" size={30} /></div>
-                    <span className="file-label">SECURE VIDEO INTAKE</span>
-                    <h2 id="upload-title">Upload a video to get started</h2>
-                    <p>Drag and drop a .mov file here, or browse your device.</p>
-                    <button type="button" className="button-primary" onClick={openFilePicker}>
-                      <Icon name="upload" size={17} /> Choose video file
-                    </button>
-                    <div className="file-requirements"><span>Format <b>.mov</b></span><i /> <span>Maximum size <b>2 GB</b></span></div>
-                    {error && <p className="upload-error" role="alert">{error}</p>}
-                  </div>
-                )}
-              </div>
+                <AnimatePresence mode="wait" initial={false}>
+                  {file ? (
+                    <motion.div
+                      key={`${file.name}-${file.lastModified}`}
+                      className="selected-file"
+                      initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                    >
+                      <motion.div
+                        className="upload-symbol"
+                        initial={reduceMotion ? false : { scale: 0.92, rotate: -3 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                      ><Icon name="file" size={28} /></motion.div>
+                      <span className="file-label">VIDEO SELECTED</span>
+                      <h2 id="upload-title" className="selected-name">{file.name}</h2>
+                      <p className="file-size">{formatSize(file.size)} <span>·</span> .mov</p>
+                      <motion.button type="button" className="button-secondary" onClick={openFilePicker} whileTap={reduceMotion ? undefined : { scale: 0.98 }}>Choose another file</motion.button>
+                      <p className="prototype-note">Analysis will be available when the backend is connected.</p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="empty-upload"
+                      className="dropzone-content"
+                      initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                    >
+                      <motion.div
+                        className="upload-symbol"
+                        initial={reduceMotion ? false : { scale: 0.92, rotate: -3 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                      ><Icon name="video" size={30} /></motion.div>
+                      <span className="file-label">SECURE VIDEO INTAKE</span>
+                      <h2 id="upload-title">Upload a video to get started</h2>
+                      <p>Drag and drop a .mov file here, or browse your device.</p>
+                      <motion.button type="button" className="button-primary" onClick={openFilePicker} whileHover={reduceMotion ? undefined : { y: -1 }} whileTap={reduceMotion ? undefined : { scale: 0.98 }}>
+                        <Icon name="upload" size={17} /> Choose video file
+                      </motion.button>
+                      <div className="file-requirements"><span>Format <b>.mov</b></span><i /> <span>Maximum size <b>2 GB</b></span></div>
+                      {error && <p className="upload-error" role="alert">{error}</p>}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
 
               <div className="benefits" aria-label="Review capabilities">
-                <div className="benefit">
+                <motion.div className="benefit" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.18, ease: 'easeOut' }}>
                   <span className="benefit-icon mint"><Icon name="search" /></span>
                   <div><h3>Detect potential violations</h3><p>Identify moments that may need a closer look.</p></div>
-                </div>
-                <div className="benefit">
+                </motion.div>
+                <motion.div className="benefit" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.23, ease: 'easeOut' }}>
                   <span className="benefit-icon rose"><Icon name="file" /></span>
                   <div><h3>Review visual evidence</h3><p>Inspect relevant frames and timestamps.</p></div>
-                </div>
-                <div className="benefit">
+                </motion.div>
+                <motion.div className="benefit" initial={reduceMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.28, ease: 'easeOut' }}>
                   <span className="benefit-icon blue"><Icon name="shield" /></span>
                   <div><h3>Assess with regulations</h3><p>Keep findings grounded in applicable guidance.</p></div>
-                </div>
+                </motion.div>
               </div>
-            </section>
+            </motion.section>
 
-            <aside className="info-column" aria-label="Upload information">
+            <motion.aside
+              className="info-column"
+              aria-label="Upload information"
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.24, delay: 0.17, ease: 'easeOut' }}
+            >
               <section className="info-panel process-panel">
                 <div className="panel-title"><span className="panel-icon"><Icon name="book" /></span><h2>How it works</h2></div>
                 <ol className="steps">
@@ -189,7 +250,7 @@ function App() {
                 <span className="privacy-icon"><Icon name="lock" /></span>
                 <div><h2>Local file selection</h2><p>This prototype does not upload or process your video. Backend handling will be defined separately.</p></div>
               </section>
-            </aside>
+            </motion.aside>
           </div>
         </main>
       </div>
