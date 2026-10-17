@@ -2,19 +2,26 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   AlertTriangle,
+  ArrowUpRight,
   ArrowLeft,
+  CalendarClock,
   Check,
   ChevronDown,
   CircleHelp,
+  CloudUpload,
+  Database,
   Clock3,
   FileVideo2,
   Film,
   FolderSearch,
   Fullscreen,
+  HardDrive,
   Info,
+  LoaderCircle,
   Minus,
   Pause,
   Play,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   Upload,
@@ -23,6 +30,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
+import { listVideos, uploadVideo, videoApiConfigured, videoListConfigured, type VideoRecord } from './services/videoApi'
 import './App.css'
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
@@ -38,6 +46,9 @@ type SampleEvent = {
   description: string
 }
 type Toast = { id: number; message: string } | null
+type SelectedVideo = { file: File | null; url: string; name: string; size: number; isObjectUrl: boolean; source: 'local' | 'server' }
+type InvestigationItem = VideoRecord & { file: File | null }
+type UploadState = { fileName: string; size: number; progress: number; phase: 'transferring' | 'complete'; source?: VideoRecord['source'] }
 
 const sampleEvents: SampleEvent[] = [
   {
@@ -81,6 +92,12 @@ function formatFileSize(bytes: number) {
   return `${bytes} bytes`
 }
 
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Date unavailable'
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
 function IconButton({
   label,
   onClick,
@@ -115,6 +132,129 @@ function ForteLogo() {
   )
 }
 
+function InvestigationGrid({
+  items,
+  loading,
+  error,
+  onRetry,
+  onOpen,
+  onNewVideo,
+}: {
+  items: InvestigationItem[]
+  loading: boolean
+  error: string
+  onRetry: () => void
+  onOpen: (item: InvestigationItem) => void
+  onNewVideo: () => void
+}) {
+  const reduceMotion = useReducedMotion()
+  return (
+    <motion.section
+      className="investigations-view"
+      initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      aria-labelledby="investigations-title"
+    >
+      <div className="page-heading investigations-heading">
+        <div>
+          <h1 id="investigations-title">Investigations</h1>
+          <p>Recordings added for review, with their storage status and available preview.</p>
+        </div>
+        <button className="button-primary" type="button" onClick={onNewVideo}><CloudUpload size={15} /> Add a recording</button>
+      </div>
+
+      {!videoApiConfigured && !videoListConfigured && (
+        <div className="storage-notice local-storage-notice">
+          <HardDrive size={15} />
+          <span><strong>Local demo mode</strong> · records and video files stay in this browser session; nothing is sent to a database.</span>
+        </div>
+      )}
+
+      {!videoApiConfigured && videoListConfigured && (
+        <div className="storage-notice">
+          <Info size={15} />
+          <span><strong>Read-only service</strong> · existing recordings load from the list endpoint; uploads stay local until an upload endpoint is configured.</span>
+        </div>
+      )}
+
+      {videoApiConfigured && !videoListConfigured && (
+        <div className="storage-notice">
+          <Info size={15} />
+          <span>Upload service is configured. Add a list endpoint to load earlier recordings after a refresh.</span>
+        </div>
+      )}
+
+      <div className="investigations-toolbar">
+        <div><span className="micro-label">RECORDING LIBRARY</span><span className="library-count">{items.length.toString().padStart(2, '0')} {items.length === 1 ? 'video' : 'videos'}</span></div>
+        {videoApiConfigured && <span className="connection-badge"><i /> UPLOAD SERVICE CONFIGURED</span>}
+      </div>
+
+      {loading ? (
+        <div className="investigation-grid" aria-label="Loading investigations" aria-busy="true">
+          {[0, 1, 2].map((item) => <div className="investigation-skeleton" key={item}><div /><span /><i /></div>)}
+        </div>
+      ) : error && items.length === 0 ? (
+        <div className="investigations-state error-state" role="alert">
+          <div className="investigations-state-icon"><AlertTriangle size={19} /></div>
+          <h2>Could not load recordings</h2>
+          <p>{error}</p>
+          <button className="button-secondary" type="button" onClick={onRetry}><RefreshCw size={14} /> Try again</button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="investigations-state empty-state">
+          <div className="empty-illustration" aria-hidden="true">
+            <div className="empty-orbit orbit-one" /><div className="empty-orbit orbit-two" />
+            <div className="empty-file-icon"><FileVideo2 size={24} strokeWidth={1.5} /></div>
+            <span className="empty-spark spark-one" /><span className="empty-spark spark-two" />
+          </div>
+          <span className="micro-label">YOUR RECORDING LIBRARY</span>
+          <h2>No recordings yet</h2>
+          <p>Add a .mov recording to see it in this grid. The video upload and analysis services are not connected yet.</p>
+          <button className="button-primary" type="button" onClick={onNewVideo}><CloudUpload size={15} /> Start with a video</button>
+        </div>
+      ) : (
+        <>
+          {error && <div className="list-refresh-error" role="status"><AlertTriangle size={13} /><span>Showing available recordings. The service list could not be refreshed.</span><button type="button" onClick={onRetry}>Retry</button></div>}
+          <div className="investigation-grid">
+            {items.map((item) => (
+              <motion.button
+                key={item.id}
+                type="button"
+                className="investigation-card"
+                onClick={() => onOpen(item)}
+                whileHover={reduceMotion ? undefined : { y: -2 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                aria-label={`Open ${item.fileName}`}
+              >
+                <div className="investigation-card-art">
+                  <div className="card-art-grid" />
+                  <span className="card-art-corner corner-one" /><span className="card-art-corner corner-two" />
+                  <span className="card-art-corner corner-three" /><span className="card-art-corner corner-four" />
+                  <span className={`record-source-tag${item.source === 'server' ? ' server-source' : ''}`}>
+                    {item.source === 'server' ? <Database size={11} /> : <HardDrive size={11} />}
+                    {item.source === 'server' ? 'STORED' : 'LOCAL DEMO'}
+                  </span>
+                  <span className="record-film-icon"><Film size={20} strokeWidth={1.5} /></span>
+                  <span className="card-art-caption">VIDEO RECORDING</span>
+                  <span className="card-open-icon"><ArrowUpRight size={15} /></span>
+                </div>
+                <span className="investigation-card-body">
+                  <span className="investigation-name-row"><strong title={item.fileName}>{item.fileName}</strong><span className={`record-state${item.source === 'server' ? ' stored-state' : ''}`}><i />{item.source === 'server' ? 'Stored' : 'Session only'}</span></span>
+                  <span className="investigation-meta"><span>{formatFileSize(item.size)}</span><i />{item.durationSeconds === null ? <span>Duration unavailable</span> : <span>{formatTime(item.durationSeconds)}</span>}</span>
+                  <span className="investigation-date"><CalendarClock size={12} /> Added {formatDate(item.createdAt)}</span>
+                  <span className="investigation-card-footer">Open video preview <ArrowUpRight size={13} /></span>
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        </>
+      )}
+    </motion.section>
+  )
+}
+
 function App() {
   const reduceMotion = useReducedMotion()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -122,7 +262,7 @@ function App() {
   const toastIdRef = useRef(0)
   const sampleTimeRef = useRef(0)
   const [section, setSection] = useState<Section>('video')
-  const [fileSelection, setFileSelection] = useState<{ file: File; url: string } | null>(null)
+  const [fileSelection, setFileSelection] = useState<SelectedVideo | null>(null)
   const [fileDuration, setFileDuration] = useState<number | null>(null)
   const [fileError, setFileError] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -132,15 +272,42 @@ function App() {
   const [sampleTime, setSampleTime] = useState(0)
   const [samplePlaying, setSamplePlaying] = useState(false)
   const [toast, setToast] = useState<Toast>(null)
+  const [investigations, setInvestigations] = useState<InvestigationItem[]>([])
+  const [investigationsLoading, setInvestigationsLoading] = useState(false)
+  const [investigationsError, setInvestigationsError] = useState('')
+  const [investigationsRevision, setInvestigationsRevision] = useState(0)
+  const [uploadState, setUploadState] = useState<UploadState | null>(null)
 
   const file = fileSelection?.file ?? null
   const fileUrl = fileSelection?.url ?? ''
 
   useEffect(() => {
-    if (!fileSelection) return
+    if (!fileSelection?.isObjectUrl) return
     const objectUrl = fileSelection.url
     return () => URL.revokeObjectURL(objectUrl)
   }, [fileSelection])
+
+  useEffect(() => {
+    if (section !== 'investigations' || !videoListConfigured) return
+    let cancelled = false
+    listVideos()
+      .then((records) => {
+        if (cancelled) return
+        const serverItems = records.map((record) => ({ ...record, file: null }))
+        setInvestigations((current) => [
+          ...serverItems,
+          ...current.filter((item) => item.source === 'local-demo' || item.file !== null),
+        ].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index))
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setInvestigationsError(error instanceof Error ? error.message : 'Could not load investigations.')
+      })
+      .finally(() => {
+        if (!cancelled) setInvestigationsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [section, investigationsRevision])
 
   useEffect(() => {
     if (!toast) return
@@ -166,12 +333,31 @@ function App() {
   const selectedEvent = sampleEvents.find((event) => event.id === selectedEventId) ?? sampleEvents[0]
   const selectedStatus = sampleStatuses[selectedEvent.id] ?? 'Awaiting review'
   const reviewedCount = Object.values(sampleStatuses).filter((status) => status !== 'Awaiting review').length
-  const previewFailed = fileError.startsWith('This .mov file could not be previewed')
+  const previewFailed = fileError.startsWith('This .mov file could not be previewed') || fileError.startsWith('This stored video does not have a playback URL')
   const pageTitle = section === 'video' ? 'Video Analysis' : section === 'investigations' ? 'Investigations' : 'Employees'
+  const uploadStepIndex = uploadState?.phase === 'complete' ? 3 : (uploadState?.progress ?? 0) < 20 ? 0 : (uploadState?.progress ?? 0) < 95 ? 1 : 2
+  const uploadSteps = videoApiConfigured
+    ? ['Prepare recording', 'Transfer video', 'Save investigation']
+    : ['Prepare recording', 'Simulate transfer', 'Add to this session']
 
   function showToast(message: string) {
     toastIdRef.current += 1
     setToast({ id: toastIdRef.current, message })
+  }
+
+  function navigateToSection(nextSection: Section) {
+    if (nextSection === 'investigations' && videoListConfigured) {
+      setInvestigationsLoading(true)
+      setInvestigationsError('')
+      if (section === 'investigations') setInvestigationsRevision((current) => current + 1)
+    }
+    setSection(nextSection)
+  }
+
+  function retryInvestigations() {
+    setInvestigationsLoading(true)
+    setInvestigationsError('')
+    setInvestigationsRevision((current) => current + 1)
   }
 
   function handleFile(candidate?: File) {
@@ -185,7 +371,7 @@ function App() {
       return
     }
     setFileError('')
-    setFileSelection({ file: candidate, url: URL.createObjectURL(candidate) })
+    setFileSelection({ file: candidate, url: URL.createObjectURL(candidate), name: candidate.name, size: candidate.size, isObjectUrl: true, source: 'local' })
     setFileDuration(null)
     showToast('File selected · stays in this browser')
   }
@@ -215,6 +401,49 @@ function App() {
     setFileError('')
     setFileDuration(null)
     showToast('Selected file removed')
+  }
+
+  async function startUpload() {
+    if (!file || uploadState?.phase === 'transferring') return
+    const currentFile = file
+    const currentDuration = fileDuration
+    setFileError('')
+    setUploadState({ fileName: currentFile.name, size: currentFile.size, progress: 0, phase: 'transferring' })
+
+    try {
+      const record = await uploadVideo(currentFile, currentDuration, (progress) => {
+        setUploadState((current) => current?.phase === 'transferring' ? { ...current, progress } : current)
+      })
+      setInvestigations((current) => [{ ...record, file: currentFile }, ...current.filter((item) => item.id !== record.id)])
+      setUploadState({ fileName: currentFile.name, size: currentFile.size, progress: 100, phase: 'complete', source: record.source })
+      showToast(record.source === 'server' ? 'Video stored by the video service' : 'Added to this session · demo only')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The video could not be uploaded.'
+      setUploadState(null)
+      setFileError(message)
+      showToast('Upload failed · see the message below the preview')
+    }
+  }
+
+  function finishUploadFlow(openInvestigations = true) {
+    if (uploadState?.phase !== 'complete') return
+    setUploadState(null)
+    setFileSelection(null)
+    setFileDuration(null)
+    setSampleMode(false)
+    if (openInvestigations) navigateToSection('investigations')
+  }
+
+  function openInvestigation(item: InvestigationItem) {
+    if (item.file) {
+      setFileSelection({ file: item.file, url: URL.createObjectURL(item.file), name: item.fileName, size: item.size, isObjectUrl: true, source: 'local' })
+    } else {
+      setFileSelection({ file: null, url: item.videoUrl ?? '', name: item.fileName, size: item.size, isObjectUrl: false, source: 'server' })
+    }
+    setFileDuration(item.durationSeconds)
+    setFileError(item.videoUrl || item.file ? '' : 'This stored video does not have a playback URL yet.')
+    setSampleMode(false)
+    setSection('video')
   }
 
   function openSample() {
@@ -273,19 +502,19 @@ function App() {
               key={id}
               type="button"
               className={`nav-item${section === id ? ' active' : ''}`}
-              onClick={() => { setSection(id); setSampleMode(false); setSamplePlaying(false) }}
+              onClick={() => { navigateToSection(id); setSampleMode(false); setSamplePlaying(false) }}
               aria-current={section === id ? 'page' : undefined}
             >
               <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
               <span>{label}</span>
-              {id !== 'video' && <span className="nav-soon">Soon</span>}
+              {id === 'employees' && <span className="nav-soon">Soon</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-foot">
-          <span className="status-dot" aria-hidden="true" />
-          <div><strong>Local prototype</strong><span>No backend connected</span></div>
+          <span className={`status-dot${videoApiConfigured || videoListConfigured ? ' is-configured' : ''}`} aria-hidden="true" />
+          <div><strong>{videoApiConfigured ? 'Upload endpoint' : videoListConfigured ? 'Video list endpoint' : 'Local demo'}</strong><span>{videoApiConfigured || videoListConfigured ? 'Configured · not verified' : 'No API endpoint set'}</span></div>
           <CircleHelp size={15} aria-hidden="true" />
         </div>
       </aside>
@@ -293,21 +522,31 @@ function App() {
       <div className="main-column">
         <header className="topbar">
           <div className="breadcrumb"><span>Compliance Intelligence</span><span className="breadcrumb-separator">/</span><strong>{pageTitle}</strong></div>
-          <div className="environment-label"><span className="environment-dot" />LOCAL PROTOTYPE</div>
+          <div className="environment-label"><span className={`environment-dot${videoApiConfigured || videoListConfigured ? ' is-configured' : ''}`} />{videoApiConfigured ? 'UPLOAD API CONFIGURED' : videoListConfigured ? 'LIST API CONFIGURED' : 'LOCAL SESSION ONLY'}</div>
         </header>
 
         <main className={`page-content${sampleMode ? ' sample-page' : ''}`} id="video-analysis">
           <AnimatePresence mode="wait" initial={false}>
-            {section !== 'video' ? (
+            {section === 'investigations' ? (
+              <InvestigationGrid
+                key="investigations"
+                items={investigations}
+                loading={investigationsLoading}
+                error={investigationsError}
+                onRetry={retryInvestigations}
+                onOpen={openInvestigation}
+                onNewVideo={() => navigateToSection('video')}
+              />
+            ) : section === 'employees' ? (
               <motion.section
-                key={section}
+                key="employees"
                 className="coming-soon-view"
                 initial={reduceMotion ? false : { opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
                 transition={{ duration: 0.18, ease: 'easeOut' }}
               >
-                <div className="placeholder-icon">{section === 'investigations' ? <FolderSearch size={20} /> : <UserRound size={20} />}</div>
+                <div className="placeholder-icon"><UserRound size={20} /></div>
                 <span className="micro-label">WORKSPACE / IN DEVELOPMENT</span>
                 <h1>{pageTitle}</h1>
                 <p>This area is reserved for a future prototype stage.</p>
@@ -315,7 +554,7 @@ function App() {
               </motion.section>
             ) : (
               <motion.div
-                key={sampleMode ? 'sample' : file ? 'file' : 'intake'}
+                key={sampleMode ? 'sample' : fileSelection ? 'file' : 'intake'}
                 className="video-page"
                 initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -356,6 +595,7 @@ function App() {
                         <div className="event-list" role="list">
                           {sampleEvents.map((event, index) => {
                             const status = sampleStatuses[event.id] ?? 'Awaiting review'
+                            const reviewClass = status === 'Awaiting review' ? `priority-${event.id.toLowerCase()}` : `reviewed-priority-${status.toLowerCase()}`
                             return (
                               <motion.button
                                 key={event.id}
@@ -370,7 +610,7 @@ function App() {
                               >
                                 <span className={`event-marker marker-${event.id.toLowerCase()}`}><span>{event.id}</span></span>
                                 <span className="event-row-copy">
-                                  <span className="event-row-top"><time>{formatTime(event.timestamp)}</time><span className={`event-priority priority-${event.id.toLowerCase()}`}><i />Review</span></span>
+                                  <span className="event-row-top"><time>{formatTime(event.timestamp)}</time><span className={`event-priority ${reviewClass}`}><i />{status === 'Awaiting review' ? 'Review' : status}</span></span>
                                   <strong>{event.title}</strong>
                                   <small>{event.category}</small>
                                 </span>
@@ -487,34 +727,36 @@ function App() {
                     </motion.section>
                   ) : (
                     <motion.section
-                      key={file ? 'selected-file' : 'upload-intake'}
+                      key={fileSelection ? 'selected-file' : 'upload-intake'}
                       className="intake-layout"
                       initial={reduceMotion ? false : { opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reduceMotion ? undefined : { opacity: 0, y: -3 }}
                       transition={{ duration: 0.18, ease: 'easeOut' }}
                     >
-                      <section className={`intake-panel${file ? ' has-file' : ''}`} aria-label={file ? 'Selected video' : 'Video upload'}>
-                        {file ? (
+                      <section className={`intake-panel${fileSelection ? ' has-file' : ''}`} aria-label={fileSelection ? 'Selected video' : 'Video upload'}>
+                        <input ref={fileInputRef} className="visually-hidden" type="file" accept=".mov,video/quicktime" onChange={handleFileChange} aria-label="Choose a .mov recording" />
+                        {fileSelection ? (
                           <>
                             <div className="intake-panel-heading">
-                              <div><span className="micro-label">LOCAL RECORDING</span><h2>Selected video</h2></div>
+                              <div><span className="micro-label">{fileSelection.source === 'server' ? 'SAVED RECORDING' : 'LOCAL RECORDING'}</span><h2>{fileSelection.source === 'server' ? 'Investigation video' : 'Selected video'}</h2></div>
                               <div className="file-actions">
-                                <button className="button-secondary compact-button" type="button" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Replace</button>
+                                {file && <button className="button-secondary compact-button" type="button" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Replace</button>}
                                 <IconButton label="Remove selected video" onClick={removeFile}><X size={16} /></IconButton>
                               </div>
                             </div>
                             <div className="video-preview-wrap">
                               {fileUrl && !previewFailed && <video ref={videoRef} className="local-video" src={fileUrl} controls playsInline onLoadedMetadata={(event) => setFileDuration(event.currentTarget.duration)} onError={() => setFileError('This .mov file could not be previewed by this browser. You can still replace or remove it.')} />}
-                              {previewFailed && <div className="video-unavailable"><AlertTriangle size={18} /><span>Video preview unavailable</span></div>}
-                              {!fileUrl && <div className="video-unavailable"><AlertTriangle size={18} /><span>Preparing local preview…</span></div>}
+                              {previewFailed && <div className="video-unavailable"><AlertTriangle size={18} /><span>{fileSelection.source === 'server' && !fileUrl ? 'Preview link unavailable' : 'Video preview unavailable'}</span></div>}
+                              {!fileUrl && !previewFailed && <div className="video-unavailable"><AlertTriangle size={18} /><span>Preparing local preview…</span></div>}
                             </div>
                             <div className="selected-file-meta">
-                              <div className="selected-file-name"><span className="file-type-icon"><FileVideo2 size={17} /></span><div><strong title={file.name}>{file.name}</strong><span>{formatFileSize(file.size)} <i /> MOV video</span></div></div>
+                              <div className="selected-file-name"><span className="file-type-icon"><FileVideo2 size={17} /></span><div><strong title={fileSelection.name}>{fileSelection.name}</strong><span>{formatFileSize(fileSelection.size)} <i /> MOV video</span></div></div>
                               <div className="duration-meta"><Clock3 size={14} /><span>{fileDuration === null ? 'Duration unavailable' : formatTime(fileDuration)}</span></div>
                             </div>
                             {fileError && <p className="inline-file-error" role="alert"><AlertTriangle size={14} />{fileError}</p>}
-                            <div className="prototype-message"><Info size={15} /><span>This file stays in your browser. Analysis is not connected in this prototype.</span></div>
+                            <div className={`prototype-message${fileSelection.source === 'server' ? ' stored-message' : ''}`}><Info size={15} /><span>{fileSelection.source === 'server' ? 'Video loaded from the storage service. Analysis is not connected yet.' : videoApiConfigured ? 'Ready to send this file to the configured video service.' : 'Local demo only · the file will stay in this browser and will not reach a database.'}</span></div>
+                            {file && <div className="upload-action-row"><button className="button-primary upload-video-button" type="button" onClick={startUpload} disabled={uploadState?.phase === 'transferring'}><CloudUpload size={15} /> Upload video</button><span>{videoApiConfigured ? 'Send to configured service' : 'Add to this session only'}</span></div>}
                           </>
                         ) : (
                           <>
@@ -528,7 +770,6 @@ function App() {
                               onDragLeave={handleDragLeave}
                               onDrop={handleDrop}
                             >
-                              <input ref={fileInputRef} className="visually-hidden" type="file" accept=".mov,video/quicktime" onChange={handleFileChange} aria-label="Choose a .mov recording" />
                               <div className="drop-target-content">
                                 <div className="upload-glyph"><Upload size={19} strokeWidth={1.7} /></div>
                                 <h3>{dragging ? 'Release to add recording' : 'Drop a recording here'}</h3>
@@ -539,7 +780,7 @@ function App() {
                               <div className="drop-corner drop-corner-tl" /><div className="drop-corner drop-corner-tr" /><div className="drop-corner drop-corner-bl" /><div className="drop-corner drop-corner-br" />
                             </div>
                             {fileError && <p className="upload-error" role="alert"><AlertTriangle size={14} />{fileError}</p>}
-                            <div className="intake-privacy"><ShieldCheck size={15} /><span>File selection is local. Nothing is uploaded or analyzed.</span></div>
+                            <div className="intake-privacy"><ShieldCheck size={15} /><span>{videoApiConfigured ? 'Nothing is sent until you choose Upload video.' : 'File selection is local. Nothing is uploaded or analyzed.'}</span></div>
                           </>
                         )}
                       </section>
@@ -556,9 +797,9 @@ function App() {
                         </section>
                         <section className="requirements-section">
                           <div className="requirements-heading"><h3>Recording requirements</h3><Info size={14} aria-hidden="true" /></div>
-                          <dl><div><dt>Format</dt><dd>.mov</dd></div><div><dt>Maximum size</dt><dd>2 GB</dd></div><div><dt>Storage</dt><dd>This browser only</dd></div></dl>
+                          <dl><div><dt>Format</dt><dd>.mov</dd></div><div><dt>Maximum size</dt><dd>2 GB</dd></div><div><dt>Storage</dt><dd>{videoApiConfigured ? 'Configured service' : 'This browser only'}</dd></div></dl>
                         </section>
-                        <div className="prototype-callout"><span className="callout-mark"><Info size={14} /></span><p><strong>Prototype environment</strong><br />No backend or video analysis service is connected.</p></div>
+                        <div className="prototype-callout"><span className="callout-mark"><Info size={14} /></span><p><strong>Prototype environment</strong><br />{videoApiConfigured ? 'Upload endpoint configured; analysis service is not connected.' : 'No upload endpoint or analysis service is configured.'}</p></div>
                       </aside>
                     </motion.section>
                   )}
@@ -568,6 +809,55 @@ function App() {
           </AnimatePresence>
         </main>
       </div>
+
+      <AnimatePresence>
+        {uploadState && (
+          <motion.div
+            className="upload-overlay"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            <motion.section
+              className="upload-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="upload-dialog-title"
+              initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: 6, scale: 0.99 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+            >
+              <div className="upload-dialog-topline"><span><i />{uploadState.phase === 'complete' ? 'TRANSFER COMPLETE' : videoApiConfigured ? 'VIDEO TRANSFER' : 'LOCAL DEMO FLOW'}</span>{uploadState.phase === 'complete' && <IconButton label="Close upload summary" onClick={() => finishUploadFlow(false)}><X size={15} /></IconButton>}</div>
+              <div className={`upload-emblem${uploadState.phase === 'complete' ? ' is-complete' : ''}`}>
+                <svg viewBox="0 0 76 76" aria-hidden="true">
+                  <circle className="upload-emblem-track" cx="38" cy="38" r="32" />
+                  <motion.circle className="upload-emblem-progress" cx="38" cy="38" r="32" strokeDasharray="201.1" initial={false} animate={{ strokeDashoffset: 201.1 * (1 - uploadState.progress / 100) }} transition={{ duration: reduceMotion ? 0 : 0.28, ease: 'easeOut' }} />
+                </svg>
+                <span>{uploadState.phase === 'complete' ? <Check size={22} /> : videoApiConfigured ? <Database size={20} /> : <HardDrive size={20} />}</span>
+              </div>
+              <div className="upload-dialog-copy">
+                <h2 id="upload-dialog-title">{uploadState.phase === 'complete' ? (uploadState.source === 'server' ? 'Video stored' : 'Added to this session') : videoApiConfigured ? 'Uploading your recording' : 'Preparing your recording'}</h2>
+                <p>{uploadState.phase === 'complete'
+                  ? uploadState.source === 'server' ? 'The video service accepted the file. It is now listed in Investigations.' : 'This is a local demo entry. No file was sent to a server or database.'
+                  : videoApiConfigured ? 'Your .mov file is being sent to the configured video service.' : 'Showing the upload experience while the backend is being built. The file stays in this browser.'}</p>
+              </div>
+              <div className="upload-file-row"><span className="upload-file-icon"><FileVideo2 size={16} /></span><span className="upload-file-copy"><strong title={uploadState.fileName}>{uploadState.fileName}</strong><small>{formatFileSize(uploadState.size)} · MOV</small></span><span className="upload-file-progress">{uploadState.progress}%</span></div>
+              <div className="upload-progress-track" role="progressbar" aria-label="Video upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadState.progress}><motion.i initial={false} animate={{ width: `${uploadState.progress}%` }} transition={{ duration: reduceMotion ? 0 : 0.24, ease: 'easeOut' }} /></div>
+              <div className="upload-step-list">
+                {uploadSteps.map((step, index) => {
+                  const done = uploadState.phase === 'complete' || index < uploadStepIndex
+                  const active = uploadState.phase === 'transferring' && index === uploadStepIndex
+                  return <div className={`upload-step${done ? ' done' : ''}${active ? ' active' : ''}`} key={step}><span>{done ? <Check size={11} /> : active ? <LoaderCircle size={11} /> : String(index + 1).padStart(2, '0')}</span><strong>{step}</strong><i>{done ? 'Complete' : active ? 'In progress' : 'Waiting'}</i></div>
+                })}
+              </div>
+              <div className={`upload-truth-note${uploadState.source === 'server' ? ' server-truth-note' : ''}`}><Info size={13} /><span>{uploadState.source === 'server' ? 'Analysis is not started. This flow only stores the video.' : videoApiConfigured ? 'Progress reflects bytes sent. The API contract may need adjustment when the backend is ready.' : 'Demo only · this progress is simulated and disappears on refresh.'}</span></div>
+              {uploadState.phase === 'complete' && <div className="upload-dialog-actions"><button className="button-primary" type="button" onClick={() => finishUploadFlow(true)}>View Investigations <ArrowUpRight size={14} /></button><button className="button-secondary" type="button" onClick={() => finishUploadFlow(false)}>Return to video</button></div>}
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {toast && (
